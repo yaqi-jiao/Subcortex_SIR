@@ -1,0 +1,11 @@
+# ingore eveything
+*
+
+# except these files
+!scripts/
+!scripts/**
+
+# setting file
+!.gitignore 
+!README.md
+!requirements.txt
