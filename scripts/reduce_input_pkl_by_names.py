@@ -53,20 +53,20 @@ Format B: Connectivity-only alternative input
 Expected structure:
 
 data = {
-    "alt_conn": numpy.ndarray,        # shape (n_regions, n_regions)
-    "alt_sc_len": numpy.ndarray,      # shape (n_regions, n_regions)
+    "conn": numpy.ndarray,        # shape (n_regions, n_regions)
+    "SC_len": numpy.ndarray,      # shape (n_regions, n_regions)
     "labels": list[str],              # length n_regions
-    "alt_ROI_size": dict[str, Any]    # one entry per region
+    "ROI_size": dict[str, Any]    # one entry per region
 }
 
 Description:
-- "alt_conn":
+- "conn":
     Alternative connectivity matrix.
-- "alt_sc_len":
+- "SC_len":
     Alternative structural connectivity length matrix.
 - "labels":
     Region names corresponding to matrix rows/columns.
-- "alt_ROI_size":
+- "ROI_size":
     ROI size dictionary aligned with labels.
 
 ----------------------------------------------------------------------
@@ -176,9 +176,9 @@ def parse_args():
         description="Reduce SIR input pkl by dropping regions using names."
     )
     parser.add_argument("--input-pkl", required=True, type=str)
-    # parser.add_argument("--output-pkl", required=True, type=str)
     parser.add_argument("--drop-names", nargs="+", default=None)
     parser.add_argument("--drop-names-txt", type=str, default=None)
+    parser.add_argument("--process-each-line", action="store_true")
     parser.add_argument("--show-all-names", action="store_true")
     parser.add_argument("--allow-missing-drop-names", action="store_true")
     return parser.parse_args()
@@ -198,7 +198,7 @@ def load_input_pkl(input_pkl_path):
     dict
         Loaded data dictionary. Expected to match one of:
         - Standard SIR format (with 'tau' and 'conn')
-        - Connectivity-only format (with 'alt_conn', 'labels', etc.)
+        - Connectivity-only format (with 'conn', 'labels', etc.)
     """
     input_pkl_path = Path(input_pkl_path)
 
@@ -215,25 +215,19 @@ def load_input_pkl(input_pkl_path):
     return data
 
 
-def load_drop_names_from_txt(txt_path):
+def load_base_names_from_txt(txt_path):
     """
-    Load region names from a text file and expand to full hemisphere names.
-
-    Each line in the file is treated as a base region name (e.g., "Hippocampus"),
-    which will be expanded to:
-        Left_<name>, Right_<name>
+    Load base region names from a text file, one per line.
 
     Parameters
     ----------
     txt_path : str or Path
-        Path to text file containing region base names.
+        Path to text file.
 
     Returns
     -------
-    base_names : list of str
-        Original base names from file.
-    drop_names : list of str
-        Expanded region names including hemisphere prefixes.
+    list of str
+        Base region names read from file.
     """
     txt_path = Path(txt_path)
     if not txt_path.is_file():
@@ -241,15 +235,35 @@ def load_drop_names_from_txt(txt_path):
 
     with open(txt_path, "r", encoding="utf-8") as f:
         base_names = [line.strip() for line in f if line.strip()]
-    
+
+    print("Base names:", base_names)
+    return base_names
+
+
+def expand_base_names(base_names):
+    """
+    Expand base region names into Left_ and Right_ full region names.
+
+    Parameters
+    ----------
+    base_names : list of str
+        Base region names such as ['Hippocampus', 'Amygdala'].
+
+    Returns
+    -------
+    list of str
+        Expanded full region names such as
+        ['Left_Hippocampus', 'Right_Hippocampus',
+         'Left_Amygdala', 'Right_Amygdala'].
+    """
+    if isinstance(base_names, str):
+        base_names = [base_names]
+
     drop_names = []
     for name in base_names:
         drop_names.append(f"Left_{name}")
         drop_names.append(f"Right_{name}")
-
-    print("Base names:", base_names)
-    print("Expanded drop names:", drop_names)
-    return base_names, drop_names
+    return drop_names        
 
 
 def extract_core_data(data):
@@ -260,7 +274,7 @@ def extract_core_data(data):
 
     Supported input formats:
     - Standard SIR input (contains 'tau' and 'conn')
-    - Connectivity-only input (contains 'alt_conn', 'labels', etc.)
+    - Connectivity-only input (contains 'conn', 'labels', etc.)
 
     Parameters
     ----------
@@ -285,10 +299,10 @@ def extract_core_data(data):
     tau_df = data.get("tau", None)
 
     if tau_df is None:
-        conn = np.asanyarray(data['alt_conn'])
+        conn = np.asarray(data['conn'])
         names = list(data['labels'])
-        roi_size = data["alt_ROI_size"]
-        sc_len = np.asanyarray(data['alt_sc_len'])
+        roi_size = data["ROI_size"]
+        sc_len = np.asarray(data['SC_len'])
     else:
         conn = np.asarray(data["conn"]["conn"])
         names = list(data["conn"]["name"])
@@ -383,9 +397,9 @@ def alignment_check(data, stage="Current"):
           np.asarray(data["conn"]["conn"]).shape == np.asarray(data["conn"]["SC_len"]).shape)
     else:
         names = list(data['labels'])
-        roi_keys = list(data['alt_ROI_size'].keys())
+        roi_keys = list(data['ROI_size'].keys())
         print("conn shape == SC_len shape:",
-            np.asarray(data["alt_conn"]).shape == np.asarray(data["alt_sc_len"]).shape)
+            np.asarray(data["conn"]).shape == np.asarray(data["SC_len"]).shape)
 
     print("name == ROI_size.keys:", names == roi_keys)
 
@@ -496,16 +510,16 @@ def apply_modifications(data, extracted, keep_idx):
         print("name:", len(data["conn"]["name"]))
         print("ROI_size:", len(data["conn"]["ROI_size"]))
     else:
-        data['alt_conn'] = conn[np.ix_(keep_idx, keep_idx)]
-        data['alt_sc_len'] = sc_len[np.ix_(keep_idx, keep_idx)]
+        data['conn'] = conn[np.ix_(keep_idx, keep_idx)]
+        data['SC_len'] = sc_len[np.ix_(keep_idx, keep_idx)]
         data['labels'] = new_names
-        data['alt_ROI_size'] = {name: old_roi[name] for name in new_names}
+        data['ROI_size'] = {name: old_roi[name] for name in new_names}
         
         print("\n*** After Modification ***")
-        print("conn:", data['alt_conn'].shape)
-        print("SC_len:", data['alt_sc_len'].shape)
+        print("conn:", data['conn'].shape)
+        print("SC_len:", data['SC_len'].shape)
         print("name:", len(data['labels']))
-        print("ROI_size:", len(data['alt_ROI_size']))
+        print("ROI_size:", len(data['ROI_size']))
 
 
     return data
@@ -542,7 +556,7 @@ def random_spot_check(data, sample_size=5, seed=None):
     else:
         tau_index = None
         names = list(data['labels'])
-        roi_keys = list(data['alt_ROI_size'].keys())
+        roi_keys = list(data['ROI_size'].keys())
 
     n = len(names)
     sample_size = min(sample_size, n)
@@ -589,23 +603,49 @@ def main():
     - Output filename is auto-generated based on dropped region names.
     """
     args = parse_args()
-
     input_pkl_path = Path(args.input_pkl)
 
     if args.drop_names and args.drop_names_txt:
         raise ValueError("Cannot specify both --drop-names and --drop-names-txt")
 
     if args.drop_names_txt:
-        base_name, drop_names = load_drop_names_from_txt(args.drop_names_txt)
+        base_names = load_base_names_from_txt(args.drop_names_txt)
+
+        if args.process_each_line:
+            for base_name in base_names:
+                print(f"Processing one region set: {base_name}")
+
+                drop_names = expand_base_names([base_name])
+                data_single = load_input_pkl(args.input_pkl)
+                extracted = extract_core_data(data_single)
+
+                basic_information_check(extracted, show_all_names=args.show_all_names)
+                alignment_check(data_single, stage=f"Before Drop ({base_name})")
+
+                _, keep_idx = find_drop_indices(
+                    names = extracted['names'],
+                    drop_names=drop_names,
+                    allow_missing_drop_names=args.allow_missing_drop_names,
+                )
+                data_single = apply_modifications(data_single, extracted, keep_idx)
+                alignment_check(data_single, stage=f"Final ({base_name})")
+                random_spot_check(data_single, sample_size=5, seed=None)
+
+                output_name = f"{input_pkl_path.stem}_drop_{base_name}.pkl"
+                with open(output_name, "wb") as f:
+                        pickle.dump(data_single, f)
+                
+                print("Saved to:", output_name)
+            return
+        else:
+            drop_names = expand_base_names(base_names)
+
     elif args.drop_names:
-        drop_names = args.drop_names
+        base_names = args.drop_names
+        drop_names = expand_base_names(base_names)
 
-        base_name =[]
-        for i in drop_names:
-            base = "_".join(i.split("_")[1:])
-            if base not in base_name:
-                base_name.append(base)
-
+    else:
+        raise ValueError("Either --drop-names or --drop-names-txt must be provided")
 
     data = load_input_pkl(args.input_pkl)
     extracted = extract_core_data(data)
@@ -622,11 +662,13 @@ def main():
     data = apply_modifications(data, extracted, keep_idx)
 
     alignment_check(data, stage="Final")
-
     random_spot_check(data, sample_size=5, seed=None)
 
     # output_dir.mkdir(parents=True, exist_ok=True)
-    tag = "_".join(base_name)
+    if len(base_names) <=5:
+        tag = "_".join(base_names)
+    else:
+        tag = f"{len(base_names)}_regions"
     output_name = f"{input_pkl_path.stem}_drop_{tag}.pkl"
 
     with open(output_name, "wb") as f:
