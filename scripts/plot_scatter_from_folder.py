@@ -15,16 +15,18 @@ The output is a PNG image named like:
 - plots/Fig2_combined_YYYYMMDD_HHMMSS.png
 
 Usage:
-    python plot_fig2_from_folder.py --input_dir /path/to/experiment/folder
+    python plot_scatter_from_folder.py --input_dir /path/to/experiment/folder
 """
 
 import argparse
 from pathlib import Path
 import sys
-
+from scipy.stats import spearmanr
 import pandas as pd
 import seaborn as sns
+import numpy as np
 import matplotlib.pyplot as plt
+
 
 from datetime import datetime
 
@@ -109,6 +111,11 @@ def infer_r_col(dat_r: pd.DataFrame) -> str:
     return r_col
 
 
+def compute_spearman(observed, simulated):
+    rho, pval = spearmanr(observed, simulated)
+    return float(rho), float(pval)
+
+
 def infer_title_from_input_dir(input_dir: Path) -> str:
     """
     Infer a plot title key from the experiment folder path.
@@ -123,41 +130,88 @@ def infer_title_from_input_dir(input_dir: Path) -> str:
         A short title key such as 'tau_presence' or 'tau_load'.
     """
     parts = input_dir.parts
+
+    if "results" not in parts:
+        raise ValueError(f"'results' not found in path: {input_dir}")
+
     lower_parts = [p.lower() for p in parts]
 
     results_idx = lower_parts.index("results")
 
+    simulated_protein = parts[results_idx + 1]   # tau
+    protein_type = parts[results_idx + 2]        # load
+
+    exp_name = input_dir.name.lower()
+    if "baseline" in exp_name:
+        condition = "full_model"
+
+        lower_parts = [p.lower() for p in input_dir.parts]
+
+    results_idx = lower_parts.index("results")
+    protein_type = lower_parts[results_idx + 2]  # gives "load", not "Load"
+
+    exp_name = input_dir.name.lower()
+
+    if "baseline" in exp_name:
+        condition = "full_model"
+    elif "spread" in exp_name and "mapt" in exp_name:
+        condition = "spreadMAPT"
+    elif "spread" in exp_name and "apoe" in exp_name:
+        condition = "spreadAPOE"
+    elif "synthesis" in exp_name and "mapt" in exp_name:
+        condition = "synMAPT"
+    elif "synthesis" in exp_name and "apoe" in exp_name:
+        condition = "synAPOE"
+    elif "clearance" in exp_name and "mapt" in exp_name:
+        condition = "clearMAPT"
+    elif "clearance" in exp_name and "apoe" in exp_name:
+        condition = "clearAPOE"
+    elif "misfold" in exp_name and "mapt" in exp_name:
+        condition = "misMAPT"
+    elif "misfold" in exp_name and "apoe" in exp_name:
+        condition = "misAPOE"
+    else:
+        condition = exp_name
+
+    return condition, protein_type
+
     # Expect:
     # results / simulated_protein / protein_type / ...
-    simulated_protein = lower_parts[results_idx + 1]
-    protein_type = lower_parts[results_idx + 2]
+    # simulated_protein = lower_parts[results_idx + 1]
+    # protein_type = lower_parts[results_idx + 2]
+    # condition = lower_parts[results_idx + 5]
+    # parts = condition.split("_")
+    # idx_76 = parts.index("68")  # need to modify based on the result path details
+    # idx_protein_type = parts.index(protein_type)
+    # condition_formatted = "_".join(parts[idx_76 + 1 : idx_protein_type])
 
-    title_name = f"{simulated_protein}_{protein_type.lower()}"
-    return title_name
+    # if condition_formatted == "":
+    #     condition_formatted = "full_model"
+    # elif condition_formatted == "drop_all":
+    #     condition_formatted = "cortex_only"
+
+    # # title_name = f"{simulated_protein}_{protein_type.lower()}"
+    # title_name = condition_formatted
+    # return title_name, protein_type
 
 
 def format_title_name(title_name: str) -> str:
     return title_name.replace("_", " ").title()
 
 
-def get_plot_colors(title_name: str) -> dict:
-    if title_name == "tau_presence":
+def get_plot_colors(protein_type: str) -> dict:
+    if protein_type == "presence":
         return {
             "color": "#36A39D",
             "line_kws": {"color": "#2C8480", "linewidth": 1},
         }
-    elif title_name == "tau_load":
+    elif protein_type == "load":
         return {
             "color": "#969C9C",
             "line_kws": {"color": "#4B4D4D", "linewidth": 1},
         }
     else:
-        raise ValueError(f"Unsupported title_name: {title_name}")
-
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
+        raise ValueError(f"Unsupported protein type: {protein_type}")
 
 
 def plot_combined(
@@ -167,9 +221,10 @@ def plot_combined(
     simulated,
     r_val,
     mse_val,
+    rho_val,
     title_name,
-    output_path,
-):
+    protein_type,
+    output_path):
     """
     Create the combined Fig2-style figure and save it to disk.
 
@@ -197,7 +252,7 @@ def plot_combined(
         "ytick.labelsize": 11,
     })
 
-    colors = get_plot_colors(title_name)
+    colors = get_plot_colors(protein_type)
     display_title = format_title_name(title_name)
 
     fig, axes = plt.subplots(
@@ -278,12 +333,13 @@ def plot_combined(
     #     ),
     # )
 
+# bbox version
     ax.text(
     0.04, 0.96,
-    f"R = {r_val:.2f}\nMSE* = {mse_val:.2f}",
+    f"Pearson r = {r_val:.4f}\nSpearman ρ = {rho_val:.4f}\nMSE* = {mse_val:.6f}",
     transform=ax.transAxes,
     ha="left", va="top",
-    fontsize=16,
+    fontsize=10,
     fontweight="bold",
     bbox=dict(
         boxstyle="round,pad=0.3",
@@ -293,6 +349,7 @@ def plot_combined(
         alpha=0.95,
     ),
 )
+
 
     style_axis(ax)
 
@@ -381,11 +438,12 @@ def main() -> None:
 
     dat_r, dat_pred, dat_metrics = load_data(input_dir)
 
-    title_name = infer_title_from_input_dir(input_dir)
+    title_name, protein_type = infer_title_from_input_dir(input_dir)
     r_col = infer_r_col(dat_r)
 
     observed, simulated = infer_prediction_columns(dat_pred)
     r_val, mse_val = infer_metrics(dat_metrics)
+    rho_val, rho_p = compute_spearman(observed, simulated)
 
     out_data_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     combined_out = output_dir / f"Fig2_combined_{out_data_time}"
@@ -397,7 +455,9 @@ def main() -> None:
         simulated=simulated,
         r_val=r_val,
         mse_val=mse_val,
+        rho_val = rho_val,
         title_name=title_name,
+        protein_type=protein_type,
         output_path=combined_out,
     )
 
