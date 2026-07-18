@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 
 """
-Reduce brain-region input pickle files by dropping specified regions.
+Reduce brain-region input pickle files by dropping selected bilateral regions.
 
-This script removes selected brain regions from an input pickle file and
-updates all related data structures consistently. It supports two input
-formats:
+This script removes specified brain regions from an SIR input pickle file and
+updates all associated data structures while preserving their original region
+ordering. It supports both standard SIR input files containing observed tau
+data and connectivity-only input files.
 
-1. Standard SIR simulation input
-   A dictionary containing observed tau data together with structural
-   connectivity information.
+Region names are supplied as base names, such as ``Hippocampus`` or
+``Amygdala``. Each base name is automatically expanded into its corresponding
+left- and right-hemisphere names:
 
-2. Connectivity-only alternative input
-   A dictionary containing only connectivity-related matrices and labels,
-   without any tau DataFrame.
+    Hippocampus
+        -> Left_Hippocampus
+        -> Right_Hippocampus
 
-After dropping the requested regions, the script writes a new reduced
-pickle file with updated matrices, labels, and ROI size mappings.
+The reduced data are saved as one or more new pickle files in the current
+working directory.
 
 ----------------------------------------------------------------------
 Supported input formats
@@ -26,125 +27,214 @@ Format A: Standard SIR input
 ----------------------------
 Expected structure:
 
-data = {
-    "tau": pandas.DataFrame,
-    "conn": {
-        "conn": numpy.ndarray,      # shape (n_regions, n_regions)
-        "SC_len": numpy.ndarray,    # shape (n_regions, n_regions)
-        "name": list[str],          # length n_regions
-        "ROI_size": dict[str, Any]  # one entry per region
+    data = {
+        "tau": pandas.DataFrame,
+        "conn": {
+            "conn": numpy.ndarray,
+            "SC_len": numpy.ndarray,
+            "name": list[str],
+            "ROI_size": dict[str, Any],
+        },
     }
-}
 
-Description:
-- "tau":
-    Observed protein measurements indexed by brain region names.
-- "conn"]["conn"]:
-    Structural connectivity matrix.
-- "conn"]["SC_len"]:
-    Structural connectivity length matrix.
-- "conn"]["name"]:
-    Region names corresponding to matrix rows/columns.
-- "conn"]["ROI_size"]:
-    ROI size dictionary aligned with region names.
+The expected components are:
 
-Format B: Connectivity-only alternative input
----------------------------------------------
+``tau``
+    Observed protein measurements. Rows must correspond to brain regions.
+
+``conn["conn"]``
+    Square structural-connectivity matrix.
+
+``conn["SC_len"]``
+    Square structural-connection-length matrix.
+
+``conn["name"]``
+    Ordered region names corresponding to the rows and columns of the
+    connectivity matrices.
+
+``conn["ROI_size"]``
+    Mapping from region names to ROI sizes.
+
+Format B: Connectivity-only input
+---------------------------------
 Expected structure:
 
-data = {
-    "conn": numpy.ndarray,        # shape (n_regions, n_regions)
-    "SC_len": numpy.ndarray,      # shape (n_regions, n_regions)
-    "labels": list[str],              # length n_regions
-    "ROI_size": dict[str, Any]    # one entry per region
-}
+    data = {
+        "conn": numpy.ndarray,
+        "SC_len": numpy.ndarray,
+        "labels": list[str],
+        "ROI_size": dict[str, Any],
+    }
 
-Description:
-- "conn":
-    Alternative connectivity matrix.
-- "SC_len":
-    Alternative structural connectivity length matrix.
-- "labels":
-    Region names corresponding to matrix rows/columns.
-- "ROI_size":
-    ROI size dictionary aligned with labels.
+The expected components are:
 
-----------------------------------------------------------------------
-What this script does
-----------------------------------------------------------------------
+``conn``
+    Square structural-connectivity matrix.
 
-Given a list of region names to remove, the script:
+``SC_len``
+    Square structural-connection-length matrix.
 
-- finds the matching region indices
-- removes those rows from tau data if tau is present
-- removes corresponding rows/columns from connectivity matrices
-- updates the region-name list
-- updates the ROI_size dictionary
-- performs alignment checks before and after reduction
-- saves the reduced result as a new pickle file
+``labels``
+    Ordered region names corresponding to matrix rows and columns.
 
-If tau is not present, the script skips tau-related processing and only
-updates connectivity-related structures.
+``ROI_size``
+    Mapping from region names to ROI sizes.
 
 ----------------------------------------------------------------------
-Usage
+Processing
 ----------------------------------------------------------------------
 
-Drop regions by explicitly listing names:
+For each requested base region name, the script:
+
+1. expands the base name into ``Left_<name>`` and ``Right_<name>``;
+2. identifies the corresponding region indices;
+3. removes the associated rows from the tau DataFrame, when tau is present;
+4. removes the associated rows and columns from ``conn`` and ``SC_len``;
+5. updates the ordered region-name list;
+6. rebuilds the ``ROI_size`` dictionary using the retained regions;
+7. prints alignment information before and after reduction;
+8. performs a random spot check of retained region names;
+9. saves the reduced dictionary as a new pickle file.
+
+----------------------------------------------------------------------
+Ways to specify regions
+----------------------------------------------------------------------
+
+Regions can be supplied directly using ``--drop-names``:
 
     python reduce_input_pkl_by_names.py \
         --input-pkl path/to/input.pkl \
-        --drop-names Left_Hippocampus Right_Hippocampus
+        --drop-names Hippocampus Amygdala
 
-Drop regions using a text file (one base region name per line):
+They can also be read from a text file using ``--drop-names-txt``:
 
     python reduce_input_pkl_by_names.py \
         --input-pkl path/to/input.pkl \
         --drop-names-txt path/to/drop_regions.txt
 
-Example contents of drop_regions.txt:
+The text file must contain one base region name per non-empty line:
 
     Hippocampus
     Amygdala
+    Caudate
 
-These names can be expanded internally into:
-    Left_Hippocampus, Right_Hippocampus
-    Left_Amygdala, Right_Amygdala
-
-----------------------------------------------------------------------
-Optional flags
-----------------------------------------------------------------------
-
---show-all-names
-    Print all available region names before reduction.
-
---allow-missing-drop-names
-    Ignore requested drop names that are not found in the input.
+``--drop-names`` and ``--drop-names-txt`` are mutually exclusive.
 
 ----------------------------------------------------------------------
-Output
+Combined and per-line processing
 ----------------------------------------------------------------------
 
-The script saves a new pickle file in the current working directory.
-The output filename is automatically generated from the input filename
-plus a suffix indicating the dropped region name(s).
+By default, all base names are removed together and one output file is
+generated:
+
+    python reduce_input_pkl_by_names.py \
+        --input-pkl path/to/input.pkl \
+        --drop-names-txt drop_regions.txt
+
+To process every line of the text file independently, use
+``--process-each-line``:
+
+    python reduce_input_pkl_by_names.py \
+        --input-pkl path/to/input.pkl \
+        --drop-names-txt drop_regions.txt \
+        --process-each-line
+
+In this mode, the original input pickle is reloaded for every base region.
+Therefore, each output file represents removal of only one bilateral region
+pair rather than cumulative removal across lines.
+
+The ``--process-each-line`` option is only used with
+``--drop-names-txt``.
+
+----------------------------------------------------------------------
+Optional arguments
+----------------------------------------------------------------------
+
+``--show-all-names``
+    Print all available connectivity region names before reduction. For
+    standard SIR inputs, the tau DataFrame index is also printed.
+
+``--allow-missing-drop-names``
+    Continue when one or more expanded region names are not present in the
+    input. Without this option, missing names raise ``ValueError``.
+
+``--process-each-line``
+    Process every base name from ``--drop-names-txt`` independently and
+    generate a separate output pickle for each line.
+
+----------------------------------------------------------------------
+Output naming
+----------------------------------------------------------------------
+
+Outputs are written to the current working directory.
+
+When processing one base region independently, the output filename is:
+
+    <input_stem>_drop_<base_name>.pkl
 
 Example:
-    Input_SIR_example_drop_Hippocampus_Amygdala.pkl
+
+    Input_SIR_ROI83_drop_Hippocampus.pkl
+
+When multiple regions are removed together and no more than five base names
+are provided, the names are included in the output filename:
+
+    <input_stem>_drop_<name1>_<name2>.pkl
+
+Example:
+
+    Input_SIR_ROI83_drop_Hippocampus_Amygdala.pkl
+
+When more than five base names are removed together, the filename records only
+the number of base regions:
+
+    <input_stem>_drop_<number>_regions.pkl
+
+Example:
+
+    Input_SIR_ROI83_drop_7_regions.pkl
+
+Existing files with the same output filename will be overwritten.
+
+----------------------------------------------------------------------
+Validation and diagnostic output
+----------------------------------------------------------------------
+
+Before and after modification, the script reports whether:
+
+- connectivity region names match the tau DataFrame index, when tau is present;
+- ``conn`` and ``SC_len`` have identical shapes;
+- connectivity region names match the ordered keys of ``ROI_size``.
+
+These checks are diagnostic only. They print Boolean results but do not raise
+errors when an inconsistency is detected.
+
+After reduction, up to five retained region indices are randomly selected and
+printed to allow manual comparison of:
+
+- connectivity names;
+- tau index values, when tau is present;
+- ROI size dictionary keys.
+
+Because no random seed is specified by the main workflow, the selected indices
+may differ between runs.
 
 ----------------------------------------------------------------------
 Notes
 ----------------------------------------------------------------------
 
-- The script assumes region ordering must remain consistent across all
-  matrices, labels, and ROI_size mappings.
-- For standard SIR input, tau index and connectivity names should refer
-  to the same regions in the same order.
-- For connectivity-only input, labels and ROI_size keys should remain
-  aligned after reduction.
-- Incorrect or inconsistent input structure may cause alignment checks
-  to fail or lead to invalid output.
+- Region-name matching is exact and case-sensitive.
+- Input region names must follow the ``Left_<base_name>`` and
+  ``Right_<base_name>`` naming convention for automatic bilateral expansion.
+- All matrices, names, tau rows, and ROI size entries are assumed to use the
+  same region order before reduction.
+- The script modifies the loaded dictionary in memory but does not overwrite
+  the original input pickle.
+- Pickle files can execute arbitrary code during loading and should only be
+  loaded from trusted sources.
 """
+
+
 
 import argparse
 import pickle
@@ -156,22 +246,41 @@ import pandas as pd
 
 def parse_args():
     """
-    Parse command-line arguments.
+    Parse command-line arguments for region removal.
 
-    Supports two mutually exclusive ways to specify regions to drop:
-    - --drop-names: directly provide full region names
-    - --drop-names-txt: provide a text file containing base region names
+    Regions can be provided either directly as base names through
+    ``--drop-names`` or through a text file using ``--drop-names-txt``.
+    The two methods cannot be used together.
+
+    Base region names are later expanded into corresponding ``Left_`` and
+    ``Right_`` region names.
 
     Returns
     -------
     argparse.Namespace
-        Parsed arguments including:
-        - input_pkl: path to input pickle file
-        - drop_names: list of region names (or None)
-        - drop_names_txt: path to txt file (or None)
-        - show_all_names: whether to print all region names
-        - allow_missing_drop_names: whether to ignore missing names
+        Parsed command-line arguments containing:
+
+        input_pkl : str
+            Path to the input pickle file.
+
+        drop_names : list of str or None
+            Base region names supplied directly on the command line.
+
+        drop_names_txt : str or None
+            Path to a text file containing one base region name per line.
+
+        process_each_line : bool
+            Whether each line in ``drop_names_txt`` should be processed
+            independently to generate a separate output file.
+
+        show_all_names : bool
+            Whether to print all available region names.
+
+        allow_missing_drop_names : bool
+            Whether requested region names that are absent from the input
+            should be ignored.
     """
+
     parser = argparse.ArgumentParser(
         description="Reduce SIR input pkl by dropping regions using names."
     )
@@ -472,17 +581,19 @@ def apply_modifications(data, extracted, keep_idx):
 
     Behavior
     --------
-    If tau is present:
-        - Subset tau DataFrame rows
-        - Subset conn and SC_len matrices
-        - Update region names
-        - Update ROI_size
+    For standard SIR input:
 
-    If tau is NOT present:
-        - Subset alt_conn and alt_sc_len matrices
-        - Update labels
-        - Update alt_ROI_size
+    - subsets the tau DataFrame by row;
+    - subsets ``conn["conn"]`` and ``conn["SC_len"]`` by row and column;
+    - updates ``conn["name"]``;
+    - rebuilds ``conn["ROI_size"]``.
 
+    For connectivity-only input:
+
+    - subsets the top-level ``conn`` and ``SC_len`` matrices;
+    - updates the top-level ``labels`` list;
+    - rebuilds the top-level ``ROI_size`` dictionary.
+    
     Notes
     -----
     - All structures are assumed to share the same region ordering.
