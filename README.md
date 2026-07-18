@@ -1,51 +1,167 @@
-## Tau Propagation Simulation in subcortiacl regions with SIR Model
-This research project aims to apply SIR model on different brain structures, to see if including 
+# Tau Propagation Simulation in Subcortical Regions Using an SIR Model
 
-This repository contains python code and mock data for batch run SIR hypertune model locally. It's a complementation for SIR model on SLURM (Bianca), allowing people running multiple jobs in one bash script.
+This research project investigates tau propagation across different brain network structures using a network-based susceptible–infected–removed (SIR) model.
 
-#### Directory structure
+The main goal is to evaluate how the inclusion or exclusion of specific subcortical regions affects simulated tau propagation and model performance. The repository also supports experiments using region-specific biological factors that modify model parameters such as spreading, synthesis, clearance, and misfolding.
 
-- Script Directory
+This repository contains Python and Bash scripts, together with example or mock input data, for running batches of SIR hyperparameter-tuning experiments locally. It complements the original SLURM-based SIR workflow used on the Bianca computing cluster by allowing multiple experiments to be configured and executed sequentially on a local machine.
 
-    It contains the python and bash code for batch running the SIR model, and generate scatter plot
+## Directory Structure
 
-- Data Directory
+### `Scripts/`
 
-    It contains 
+Contains Python and Bash scripts for:
 
-- Model Directory:
-   
-   It contains the python code for SIR model.
+- building SIR-compatible input pickle files;
+- generating alternative connectomes by removing selected brain regions;
+- running batches of hyperparameter-tuning experiments;
+- summarizing simulation results;
+- generating scatter plots and brain-surface visualizations.
 
-#### Installation (mention the SIR model repo)
-1. clone the repository
-2. clone SIR repositry following the guidance
-Note: 
+### `data/`
 
-#### Usage: batch run the model
+Contains input data, mock data, ROI information, connectivity matrices, regional factors, and generated SIR-compatible pickle files.
 
-1. Generate different connectomes
-   `reduce_input_pkl_by_names.py`
-    To generate alternative input connectome with different brain regions with brain regions you want to drop. 
+The exact contents may vary depending on the experiment. Large or sensitive datasets are not included in this repository.
 
-    there are 2 ways to specify dropped regions:
-    --drop-names
-    ```python
-        python reduce_input_pkl_by_names.py \
-        --input-pkl path/to/input.pkl \
-        --drop-names <regions you want to drop>  # for example: Hippocampus Amygdala
-    ```
-    --drop-names-txt
-    ```python
-    python reduce_input_pkl_by_names.py \
+### `External model dependency/`
+
+Contains or references the Python implementation of the SIR tau-propagation model.
+
+The original SIR model repository must be installed separately. See the installation instructions below.
+
+## Installation
+
+### 1. Clone this repository
+
+```bash
+git clone <this-repository-url>
+cd <repository-name>
+```
+
+### Clone the original SIR model repository
+
+Clone the original SIR simulation repository and follow its installation instructions:
+
+```bash
+git clone <SIR-model-repository-url>
+```
+
+The SIR model repository should be placed in the expected project location, or the paths in the scripts should be updated accordingly.
+
+### 3. Create the Python environment
+
+Install the dependencies required by both this repository and the original SIR model.
+
+## Usage
+
+### 1. Build an SIR-compatible input pickle file
+
+Use the input-building script to combine CSV files containing tau measurements, ROI names, structural connectivity, connection lengths, and ROI sizes into the pickle format expected by the SIR model.
+
+```bash
+python Scripts/local_test_build_input_from_dict.py
+```
+
+Before running the script, confirm that the input file paths and output filename are configured correctly.
+
+### 2. Generate alternative connectomes
+
+Use `reduce_input_pkl_by_names.py` to remove selected bilateral brain regions from an existing SIR input pickle file.
+
+Region names should be provided as base names. For example, Hippocampus is automatically expanded to:
+
+```txt
+Left_Hippocampus
+Right_Hippocampus
+```
+
+#### Specify regions directly
+
+```bash
+python Scripts/reduce_input_pkl_by_names.py \
+    --input-pkl path/to/input.pkl \
+    --drop-names Hippocampus Amygdala
+```
+
+This command removes both the left and right hippocampus and amygdala from the input data.
+
+#### Read region names from a text file
+
+```bash
+python Scripts/reduce_input_pkl_by_names.py \
     --input-pkl path/to/input.pkl \
     --drop-names-txt path/to/drop_regions.txt
-    --process-each-line  # note: without this, all regions will be removed once
-    ```
-    
-2. Batch Running the SIR model
-3. Batch Run the summary
-4. Bacth Generate scatter plot and brain surface projection
+```
 
+The text file should contain one base region name per line:
 
+```txt
+Hippocampus
+Amygdala
+Caudate
+```
 
+Without additional options, all listed regions are removed together and one output pickle file is generated.
+
+#### Process each region independently
+
+```bash
+python Scripts/reduce_input_pkl_by_names.py \
+    --input-pkl path/to/input.pkl \
+    --drop-names-txt path/to/drop_regions.txt \
+    --process-each-line
+```
+
+With --process-each-line, the original input pickle is reloaded for every line in the text file. A separate output file is therefore generated for each removed bilateral region pair.
+
+### 3. Run a batch of SIR hyperparameter-tuning experiments
+
+Use `batch_run_hypertune_modified.py` to run multiple experiments sequentially.
+
+```bash
+python Scripts/batch_run_hypertune_modified.py
+```
+
+The script currently supports two experiment modes:
+
+#### Alternative-connectome mode
+
+Runs the SIR model using multiple connectivity files generated by removing or modifying selected brain regions.
+
+#### Regional-factor mode
+
+Runs one baseline model followed by combinations of region-specific factors and parameter-variation options.
+
+### 4. Summarize simulation results
+
+Add one simulation result directory per line to:
+
+```bash
+results/results_path.txt
+```
+
+Then run:
+
+```bash
+bash Scripts/batch_summary.sh
+```
+
+The script processes each result directory sequentially and calls the summary pipeline with the configured connectivity type, epicenter, and input dataset.
+
+### 5. Generate scatter plots and brain-surface visualizations
+
+After summary files have been generated, run:
+
+```bash
+bash Scripts/batch_plot.sh
+```
+
+The script reads result directories from `results_path.txt` and generates plots for each directory.
+
+## Notes
+
+- Most scripts currently contain project-specific paths that must be updated before use on another computer.
+- Relative paths are resolved from the current working directory.
+- Brain-region names are matched exactly and are case-sensitive.
+- Large datasets, sensitive data, and full simulation outputs are not included in this repository.
