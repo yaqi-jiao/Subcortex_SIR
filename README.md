@@ -4,33 +4,98 @@ This research project investigates tau propagation across different brain networ
 
 The main goal is to evaluate how the inclusion or exclusion of specific subcortical regions affects simulated tau propagation and model performance. The repository also supports experiments using region-specific biological factors that modify model parameters such as spreading, synthesis, clearance, and misfolding.
 
-This repository contains Python and Bash scripts, together with example or mock input data, for running batches of SIR hyperparameter-tuning experiments locally. It complements the original SLURM-based SIR workflow used on the Bianca computing cluster by allowing multiple experiments to be configured and executed sequentially on a local machine.
+
+## Repository Relationship
+
+This repository contains the **project-specific workflow** built around a modified SIR tau-propagation model.
+
+The core SIR simulation code is maintained separately in my fork of the original SIR model repository:
+
+**SIR model repository:** [SIR model](<https://github.com/yaqi-jiao/Xiao_Tau_simulation_SIR>)
+
+The two repositories serve different purposes:
+
+- This repository contains Python and Bash scripts, together with example or mock input data, for the **project-specific workflow** built around a modified SIR tau-propagation model, which runs batches of SIR hyperparameter-tuning experiments locally. It complements the original SLURM-based SIR workflow used on the Bianca computing cluster by allowing multiple experiments to be configured and executed sequentially on a local machine.
+
+- **The SIR model repository** contains the core simulation framework, hyperparameter tuning, model evaluation, and the ROI-mapping / alternative-connectivity extensions used by this project.
+
+The workflow in this repository therefore depends on the SIR model repository, but the model source code is kept separate to avoid mixing project-specific analysis scripts with the core simulation implementation.
+
+Conceptually:
+
+```text
+Project / workflow repository
+│
+├── input data preparation
+├── alternative-connectome generation
+├── batch experiment configuration
+├── batch result summarization
+└── plotting / visualization
+        │
+        ▼
+Modified SIR model repository
+│
+├── SIR simulation
+├── hyperparameter tuning
+├── ROI-space matching
+├── alternative-connectivity support
+└── model evaluation        
+```
+The modified SIR model repository is itself a fork of the original lab SIR repository. Changed specific to this project, including support for mismatched ROI space and higher resolution-to-coarse ROI mapping, are documented in the model repository.
 
 ## Directory Structure
 
-### `Scripts/`
+- Script Directory:
+    
+    All scripts used are in `scripts`
 
-Contains Python and Bash scripts for:
+- Input Directory:
 
-- building SIR-compatible input pickle files;
-- generating alternative connectomes by removing selected brain regions;
-- running batches of hyperparameter-tuning experiments;
-- summarizing simulation results;
-- generating scatter plots and brain-surface visualizations.
+    All input files for creating simulation data must be stored in the `Data/` directory.
 
-### `data/`
+    All input files for generating scatter plot and brain surface projection must be stored in the `Result/` directory in **SIR model repository**
 
-Contains input data, mock data, ROI information, connectivity matrices, regional factors, and generated SIR-compatible pickle files.
+- Output Directory:
 
-The exact contents may vary depending on the experiment. Large or sensitive datasets are not included in this repository.
+    Created simulation data will be saved to the `Results/` directory.
 
-### `External model dependency/`
+    The generated plots will be saved to the `results/` directory in **SIR model repository**
 
-Contains or references the Python implementation of the SIR tau-propagation model.
-
-The original SIR model repository must be installed separately. See the installation instructions below.
+```text
+project/
+├── Scripts/
+│   ├── build_input.py  # build main simulation data
+│   ├── reduce_input_pkl_by_names.py  # alternative-connectome generation scripts
+│   ├── batch_run_hypertune_modified.y  # batch hyperparameter-tuning scripts
+│   ├── plot_scatter_from_folder.py  # plotting and visualization scripts
+│   ├── batch_plot.sh  # batch ploy scripts
+│   └── batch_summary.sh  # result summarization scripts
+│
+├── Data/
+│   ├── input and mock data
+│   ├── ROI information
+│   ├── connectivity matrices
+│   ├── regional-factor data
+│   └── generated SIR-compatible pickle files
+│
+├── SIR model repository/  # the core SIR model is maintained separately and used as an external repository
+│   └── results/
+│       └── results_path.txt  # store specific result path for plotting
+│
+│
+└── README.md  # This file
+```
 
 ## Installation
+
+### Requirements
+
+This project depends on the modified SIR model repository and its Python environment. The software requirements for the SIR model are described in the model repository:
+
+[SIR model requirements](<https://github.com/yaqi-jiao/Xiao_Tau_simulation_SIR/blob/main/requirements.txt>)
+
+Additional packages required by the project-specific preprocessing and visualization scripts should be installed as needed.
+
 
 ### 1. Clone this repository
 
