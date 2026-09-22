@@ -1,0 +1,19 @@
+# IMPORTANT
+# This file is used by batch_summary.sh to locate completed SIR result folders.
+#
+# Requirements:
+# - Place this file in the SIR model results directory.
+# - Add one result folder path per line.
+# - Use absolute paths only.
+# - Each path should point to a completed SIR simulation result folder.
+#
+# Comment lines starting with "#" are ignored.
+# Before running batch_summary.sh, update this file with the result folders
+# you want to summarize.
+
+
+/path_to_the_directory/path_to_the_directory/path_to_the_directory/path_to_the_directory/Xiao_Tau_simulation_SIR/results/tau/Presence/hypertune/entorhinal/run_01
+/path_to_the_directory/path_to_the_directory/path_to_the_directory/path_to_the_directory/Xiao_Tau_simulation_SIR/results/tau/Load/hypertune/entorhinal/run_02
+/path_to_the_directory/path_to_the_directory/path_to_the_directory/path_to_the_directory/Xiao_Tau_simulation_SIR/results/tau/Presence/hypertune/entorhinal/run_03
+/path_to_the_directory/path_to_the_directory/path_to_the_directory/path_to_the_directory/Xiao_Tau_simulation_SIR/results/tau/Load/hypertune/entorhinal/run_04
+
